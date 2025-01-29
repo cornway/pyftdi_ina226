@@ -5,9 +5,20 @@ from pyftdi.i2c import I2cController, I2cNackError
 from argparse import ArgumentParser, FileType
 from time import sleep
 
-from ina226 import INA226, INA226_REgs
+from ina226 import INA226
+
+from plot import RealTimePlotParams, RealTimePlot
+
 
 ftdi_device = "ftdi://ftdi:232h:3:10/1"
+
+def generator(ina226: INA226):
+    while True:
+        current = ina226.readCurrent()
+        vbus = ina226.readVbus()
+        power = current * vbus
+
+        yield [power * 1000, vbus * 1000, current * 1000]
 
 def main():
     argparser = ArgumentParser()
@@ -32,18 +43,39 @@ def main():
 
     ina226 = INA226(port)
 
-    ina226.setupCurrent()
-    ina226.calibrate(maxCurrent=0.1, Rshunt=0.1)
+    interval = ina226.setup()
+    ina226.calibrate(maxCurrent=1, Rshunt=0.1)
+    interval *= 2
 
-    while True:
-        current = ina226.readCurrent()
+    print(f'{interval=}')
 
-        print(f'current: {current * 1000} mA')
-        sleep(0.2)
+    winsize_sec = 20
+    winsize = int(winsize_sec / interval)
 
-    #id = port.exchange(0x00, 2)
+    plotParams = []
+    plotParams.append( RealTimePlotParams(
+            xlabel='Time S',
+            ylabel="Power, mW",
+            title=""
+        )
+    )
 
-    #print(f'{id=}')
+    plotParams.append( RealTimePlotParams(
+            xlabel='Time S',
+            ylabel="Voltage, mV",
+            title=""
+        )
+    )
+
+    plotParams.append( RealTimePlotParams(
+            xlabel='Time S',
+            ylabel="Current, mA",
+            title=""
+        )
+    )
+
+    plot = RealTimePlot(plotParams, winsize, interval, generator(ina226))
+    plot.run()
 
 if __name__ == '__main__':
     main()
