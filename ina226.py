@@ -57,7 +57,8 @@ class INA226:
 
         print('Setup OK')
 
-        interval = self.map_conv_time[VSHCT_setting] * self.map_avg[AVG_setting]
+        interval = self.map_conv_time[VSHCT_setting] * self.map_avg[AVG_setting] + \
+                    self.map_conv_time[VBUSCT_setting] * self.map_avg[AVG_setting] + 2
         interval /= 1000
 
         return interval

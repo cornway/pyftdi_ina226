@@ -1,8 +1,11 @@
+#include <HardwareSerial.h>
 
-#include "string.h"
-#include "ina226_drv.h"
-#include "ina226_log.h"
+#include "ring.hpp"
+#include "ina226.hpp"
 
+RingBuffer<char, 2048> ringRxBuffer;
+
+#define INA226_ADDRESS 0x40
 
 enum INA226_Regs {
     ConfigReg          = 0x00,
@@ -55,16 +58,20 @@ enum OpCodes {
     OpCodeWrite = 0xfff1
 };
 
-extern int __I2C_readReg16 (uint8_t addr, uint16_t reg_addr, uint16_t *data);
-extern int __I2C_writeReg16 (uint8_t addr, uint16_t reg_addr, uint16_t data);
-extern int __sendUartData (void *buffer, uint16_t size);
-extern int __recvUartData (void *buffer, uint16_t size);
-extern void __waitUartReady();
-extern void set_led (uint32_t value);
-
-void ina226_init (ina226_t *drv, uint8_t address) {
-    drv->i2c_address = address;
+template <typename T, size_t Size>
+static uint16_t popWord (RingBuffer<T, Size> &ring) {
+    uint8_t c[2];
+    uint16_t ret;
+    for (int i = 0; i < 2; i++) {
+        c[i] = ring.pop();
+    }
+    ret = c[1] << 8 | c[0];
+    return ret;
 }
+
+extern "C" void _btSend (const void *buf, size_t size);
+extern "C" uint16_t _i2cRead (uint8_t devAddr, uint16_t index);
+extern "C" bool _i2cWrite (uint8_t devAddr, uint16_t index, uint16_t value);
 
 static uint16_t ina226_sample_buffer[2] [1024];
 static uint8_t ina226_sample_buffer_idx = 0;
@@ -72,72 +79,68 @@ static uint8_t ina226_sample_buffer_idx = 0;
 static uint16_t Config_reg;
 static uint8_t MODE_val;
 
-void ina226_tick(ina226_t *drv) {
-    uint16_t rword;
+void Ina226::loop () {
+    uint16_t op;
     uint8_t ack = 0xff;
 
-    __recvUartData(&rword, 2);
+    op = popWord(ringRxBuffer);
 
-    switch (rword) {
+    char str[128];
+    sprintf(str, "loop: %x", op);
+    Serial.println(str);
+
+    switch (op) {
         case OpCodeRead: {
-            uint16_t addr;
-            uint16_t reg;
-
-            __sendUartData(&ack, 1);
-            __recvUartData(&addr, 2);
-            __I2C_readReg16(drv->i2c_address, addr, &reg);
-            __sendUartData(&reg, 2);
+            _btSend(&ack, 1);
+            uint16_t addr = popWord(ringRxBuffer);
+            uint16_t value = _i2cRead(INA226_ADDRESS, addr);
+            _btSend(&value, 2);
             break;
         }
         case OpCodeWrite: {
-            uint16_t addr;
-            uint16_t reg;
-            __sendUartData(&ack, 1);
-            __recvUartData(&addr, 2);
-            __sendUartData(&ack, 1);
-            __recvUartData(&reg, 2);
-            __I2C_writeReg16(drv->i2c_address, addr, reg);
+            _btSend(&ack, 1);
+            uint16_t addr = popWord(ringRxBuffer);
+            _btSend(&ack, 1);
+            uint16_t value = popWord(ringRxBuffer);
+            _i2cWrite(INA226_ADDRESS, addr, value);
 
             if (addr == ConfigReg) {
-                Config_reg = reg;
-                MODE_val = reg & 0b111;
+                Config_reg = value;
+                MODE_val = value & 0b111;
             }
+
             break;
         }
         default: {
-            uint16_t pkt_length = rword;
+            uint16_t pkt_length = op;
             uint8_t triggered = (MODE_val & 0b100) == 0 && MODE_val != 0;
             for (int i = 0; i < pkt_length; i += 2) {
                 uint16_t current_raw;
                 uint16_t vbus_raw;
 
-                set_led(1);
                 if (triggered) {
                     uint8_t conv_ready = 0;
                     uint16_t reg;
-                    __I2C_writeReg16(drv->i2c_address, ConfigReg, Config_reg);
+                    _i2cWrite(INA226_ADDRESS, ConfigReg, Config_reg);
                     while (! conv_ready) {
-                        __I2C_readReg16(drv->i2c_address, MaskEnableReg, &reg);
+                        reg = _i2cRead(INA226_ADDRESS, MaskEnableReg);
                         conv_ready = reg & (1 << 3);
                     }
-                    __I2C_readReg16(drv->i2c_address, CurrentReg, &current_raw);
-                    __I2C_readReg16(drv->i2c_address, BusVoltageReg, &vbus_raw);
+                    current_raw = _i2cRead(INA226_ADDRESS, CurrentReg);
+                    vbus_raw = _i2cRead(INA226_ADDRESS, BusVoltageReg);
 
                 } else {
-                    __I2C_readReg16(drv->i2c_address, CurrentReg, &current_raw);
-                    __I2C_readReg16(drv->i2c_address, BusVoltageReg, &vbus_raw);
+                    current_raw = _i2cRead(INA226_ADDRESS, CurrentReg);
+                    vbus_raw = _i2cRead(INA226_ADDRESS, BusVoltageReg);
                 }
-                set_led(0);
 
 
                 ina226_sample_buffer[ina226_sample_buffer_idx][i] = current_raw;
                 ina226_sample_buffer[ina226_sample_buffer_idx][i+1] = vbus_raw;
             }
 
-            __waitUartReady();
-            __sendUartData(ina226_sample_buffer[ina226_sample_buffer_idx], pkt_length * sizeof(uint16_t));
+            _btSend((uint8_t *)ina226_sample_buffer[ina226_sample_buffer_idx], pkt_length * sizeof(uint16_t));
             ina226_sample_buffer_idx ^= 1;
-            break;
         }
     }
 }

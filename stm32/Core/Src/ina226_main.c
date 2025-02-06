@@ -43,10 +43,7 @@ int __I2C_writeReg16 (uint8_t addr, uint16_t reg_addr, uint16_t data) {
 }
 
 void __waitUartReady() {
-    set_led(1);
     while (huart3.gState != HAL_UART_STATE_READY) {}
-    set_led(0);
-
 }
 
 int __sendUartData (void *buffer, uint16_t size) {
