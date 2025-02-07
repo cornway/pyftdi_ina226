@@ -1,7 +1,11 @@
 import asyncio
-import functools
 from collections import deque
 from bleak import BleakClient, BleakScanner
+import numpy as np
+from enum import IntEnum
+import threading
+
+from ina226_if import INA226_ll
 
 UART_TX_UUID = "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
 UART_RX_UUID = "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"
@@ -40,7 +44,7 @@ async def uart_ble(rxbuf: deque, txbuf: deque, targetDeviceName):
 
         try:
             while True:
-                await asyncio.sleep(0.001)
+                await asyncio.sleep(0.01)
                 if len(txbuf):
                     await client.write_gatt_char(UART_TX_UUID, txbuf)
                     txbuf.clear()
@@ -51,29 +55,11 @@ async def uart_ble(rxbuf: deque, txbuf: deque, targetDeviceName):
             await client.stop_notify(UART_RX_UUID)
             print("Disconnected.")
 
-
-import numpy as np
-from enum import IntEnum
-
-from ina226_regs import *
-from ina226_if import INA226_If
-
-import threading
-
-class OpCodes(IntEnum):
-    ReadReg = 0xfff0
-    WriteReg = 0xfff1
-
-class INA226_Bt(INA226_If):
+class INA226_Bt(INA226_ll):
     byteorder = 'little'
     MaxPktLen = 2048
 
     def __init__(self):
-        self.current_buf = deque(maxlen=self.MaxPktLen//2)
-        self.vbus_buf = deque(maxlen=self.MaxPktLen//2)
-        self.nr_packets = 0
-        self.pkt_req_sent = False
-
         self.rxbuf = deque(maxlen=self.MaxPktLen)
         self.txbuf = deque(maxlen=self.MaxPktLen)
 
@@ -91,76 +77,3 @@ class INA226_Bt(INA226_If):
             pass
         data = bytes([self.rxbuf.popleft() for _ in range(nr_bytes)])
         return data
-
-    def checkAck(self):
-        ack = self.recvBytes(1)
-        ack = int.from_bytes(bytes=ack, byteorder=self.byteorder)
-        assert ack == 0xff
-
-    def readReg16(self, addr: int):
-        header = OpCodes.ReadReg.to_bytes(2, byteorder=self.byteorder)
-        addr = addr.to_bytes(2, byteorder=self.byteorder)
-
-        self.sendBytes(header)
-        self.checkAck()
-        self.sendBytes(addr)
-
-        reg = self.recvBytes(2)
-        reg = int.from_bytes(bytes=reg, byteorder=self.byteorder)
-        return reg
-
-    def writeReg16(self, addr: int, val: int):
-        header = OpCodes.WriteReg.to_bytes(2, byteorder=self.byteorder)
-        header = bytearray(header)
-        addr = addr.to_bytes(2, byteorder=self.byteorder)
-        val = val.to_bytes(2, byteorder=self.byteorder)
-
-
-        self.sendBytes(header)
-        self.checkAck()
-        self.sendBytes(addr)
-        self.checkAck()
-        self.sendBytes(val)
-
-    def readCurrent(self):
-        if len(self.current_buf) == 0:
-            self.read_packet()
-
-        raw = self.current_buf.popleft()
-        return raw
-
-    def readVbus(self):
-        if len(self.vbus_buf) == 0:
-            self.read_packet()
-
-        raw = self.vbus_buf.popleft()
-        return raw
-
-    def read_packet(self):
-        pkt_length = 128
-
-        if not self.pkt_req_sent:
-            wdata = pkt_length.to_bytes(2, byteorder='little')
-            self.sendBytes(wdata)
-            self.pkt_req_sent = True
-
-        pkt = self.recvBytes(pkt_length * 2)
-        self.pkt_req_sent = False
-        pkt = np.frombuffer(pkt, dtype=np.uint16)
-
-        if (len(self.current_buf) or len(self.vbus_buf)):
-            print('Packets were not empty !')
-
-        self.current_buf.clear()
-        self.vbus_buf.clear()
-
-        self.current_buf.extend( pkt[::2] )
-        self.vbus_buf.extend( pkt[1::2] )
-
-        print(f'Packet {self.nr_packets}')
-        self.nr_packets += 1
-
-        if not self.pkt_req_sent:
-            wdata = pkt_length.to_bytes(2, byteorder='little')
-            self.sendBytes(wdata)
-            self.pkt_req_sent = True

@@ -6,7 +6,9 @@ from argparse import ArgumentParser, FileType
 
 from ina226 import INA226
 from ina226_i2c import INA226_I2C_If
-from ina226_uart import INA226_Serial
+from ina226_uart import INA226_Uart
+from ina226_bt import INA226_Bt
+from ina226_remote import INA226_Remote
 
 from plot import RealTimePlotParams, RealTimePlot
 import time
@@ -18,7 +20,7 @@ def generator(ina226: INA226, interval):
         current = ina226.readCurrent()
         vbus = ina226.readVbus()
         power = current * vbus
-        time.sleep(interval)
+        time.sleep(0.01)
 
         yield [power * 1000, vbus * 1000, current * 1000]
 
@@ -47,7 +49,9 @@ def main():
         ina_if = INA226_I2C_If(port)
 
     else:
-        ina_if = INA226_Serial("/dev/ttyUSB0", 115200)
+        #ina_if = INA226_Serial("/dev/ttyUSB0", 115200)
+        ina_ll = INA226_Bt()
+        ina_if = INA226_Remote(ina_ll)
 
     ina226 = INA226(ina_if)
 

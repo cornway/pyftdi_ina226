@@ -1,17 +1,27 @@
 
 
+class INA226_ll:
+    def __init__(self):
+        raise NotImplemented()
+
+    def sendBytes(self):
+        raise NotImplemented()
+
+    def recvBytes(self):
+        raise NotImplemented()
+
 class INA226_If:
     def __init__(self):
-        pass
+        raise NotImplemented()
 
     def readReg16(self, addr: int):
-        pass
+        raise NotImplemented()
 
     def writeReg16(self, addr: int, val: int):
-        pass
+        raise NotImplemented()
 
     def readCurrent(self):
-        pass
+        raise NotImplemented()
 
     def readVbus(self):
-        pass
+        raise NotImplemented()
