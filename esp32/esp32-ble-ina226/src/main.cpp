@@ -3,6 +3,7 @@
 #include <BLEUtils.h>
 #include <BLE2902.h>
 #include <Wire.h>
+#include <HardwareSerial.h>
 #include "ring.hpp"
 #include "ina226.hpp"
 
@@ -13,7 +14,6 @@
 
 BLECharacteristic *pTxCharacteristic;
 bool deviceConnected = false;
-String receivedData = "";
 
 extern RingBuffer<char, 2048> ringRxBuffer;
 
@@ -24,7 +24,7 @@ class MyServerCallbacks : public BLEServerCallbacks {
 
 class MyCallbacks : public BLECharacteristicCallbacks {
     void onWrite(BLECharacteristic *pCharacteristic) {
-        receivedData = pCharacteristic->getValue();
+        auto receivedData = pCharacteristic->getValue();
         if (receivedData.length() > 0) {
             const uint8_t *buf = (const uint8_t *)receivedData.c_str();
             for (int i = 0; i < receivedData.length(); i++) {
