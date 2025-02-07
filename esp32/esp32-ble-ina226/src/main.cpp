@@ -14,8 +14,7 @@
 
 BLECharacteristic *pTxCharacteristic;
 bool deviceConnected = false;
-
-extern RingBuffer<char, 2048> ringRxBuffer;
+Ina226 *ina226;
 
 class MyServerCallbacks : public BLEServerCallbacks {
     void onConnect(BLEServer* pServer) { deviceConnected = true; Serial.println("connected"); }
@@ -28,20 +27,18 @@ class MyCallbacks : public BLECharacteristicCallbacks {
         if (receivedData.length() > 0) {
             const uint8_t *buf = (const uint8_t *)receivedData.c_str();
             for (int i = 0; i < receivedData.length(); i++) {
-                while (false == ringRxBuffer.push(buf[i])) {}
+                ina226->pushRxBuf(buf[i]);
             }
-            Serial.println("Received Message");
         }
     }
 };
 
-extern "C" void _btSend (uint8_t *buf, size_t size) {
-    pTxCharacteristic->setValue(buf, size);
+void _btSend (void *buf, size_t size) {
+    pTxCharacteristic->setValue((uint8_t *)buf, size);
     pTxCharacteristic->notify();
-    Serial.println("Sent OK");
 }
 
-extern "C" uint16_t _i2cRead (uint8_t devAddr, uint16_t index) {
+uint16_t _i2cRead (uint8_t devAddr, uint16_t index) {
     uint16_t value;
     Wire.beginTransmission(devAddr);
     Wire.write(index);
@@ -57,7 +54,7 @@ extern "C" uint16_t _i2cRead (uint8_t devAddr, uint16_t index) {
     return value;
 }
 
-extern "C" bool _i2cWrite (uint8_t devAddr, uint16_t index, uint16_t value) {
+bool _i2cWrite (uint8_t devAddr, uint16_t index, uint16_t value) {
     Wire.beginTransmission(devAddr);
     Wire.write(index);
     Wire.write(value >> 8);
@@ -69,9 +66,11 @@ extern "C" bool _i2cWrite (uint8_t devAddr, uint16_t index, uint16_t value) {
     return true;
 }
 
-Ina226 ina226;
-
 void setup() {
+
+    ina226 = new Ina226();
+    ina226->registerCallbacks(_btSend, _i2cRead, _i2cWrite);
+
     Wire.begin();
     Wire.setClock(400000);
     Serial.begin(115200);
@@ -93,11 +92,10 @@ void setup() {
     pService->start();
     pServer->getAdvertising()->start();
     Serial.println("BLE UART Ready");
-    ina226 = Ina226();
 }
 
 void loop() {
     if (deviceConnected) {
-        ina226.loop();
+        ina226->loop();
     }
 }
