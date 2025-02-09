@@ -104,3 +104,6 @@ class INA226:
 
         conv_time_setting, avg_setting = best_pair
         return conv_time_setting, avg_setting, diff_time/1000
+
+    def terminate(self):
+        self.ina226_if.terminate()

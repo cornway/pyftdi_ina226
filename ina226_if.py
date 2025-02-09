@@ -10,6 +10,9 @@ class INA226_ll:
     def recvBytes(self):
         raise NotImplemented()
 
+    def terminate(self):
+        raise NotImplemented()
+
 class INA226_If:
     def __init__(self):
         raise NotImplemented()
@@ -25,3 +28,7 @@ class INA226_If:
 
     def readVbus(self):
         raise NotImplemented()
+
+    def terminate(self):
+        raise NotImplemented()
+

@@ -59,9 +59,10 @@ enum OpCodes {
     OpCodeGetBufferLen = 0xfff3
 };
 
-Ina226::Ina226 () :
+Ina226::Ina226 (size_t maxSamplesPerBatch) :
     m_sampleBufferidx(0),
-    m_i2cAddress(INA226_DEFAULT_ADDRESS) {}
+    m_i2cAddress(INA226_DEFAULT_ADDRESS),
+    m_maxSamplesPerBatch(maxSamplesPerBatch) {}
 
 uint16_t Ina226::popWord () {
     uint8_t c[2];
@@ -71,6 +72,24 @@ uint16_t Ina226::popWord () {
     }
     ret = c[1] << 8 | c[0];
     return ret;
+}
+
+void Ina226::i2cWrite(uint16_t index, uint16_t value) {
+    m_i2cWrite(m_i2cAddress, index, value);
+}
+
+uint16_t Ina226::i2cRead(uint16_t index) {
+    return m_i2cRead(m_i2cAddress, index);
+}
+
+void Ina226::sendBuffer(void *_buf, size_t size) {
+    uint8_t *buf = (uint8_t *)_buf;
+    while (size > m_maxSamplesPerBatch) {
+        m_btSend((void *)buf, m_maxSamplesPerBatch);
+        buf += m_maxSamplesPerBatch;
+        size -= m_maxSamplesPerBatch;
+    }
+    m_btSend((void *)buf, size);
 }
 
 void Ina226::pushRxBuf (uint8_t c) {
@@ -91,7 +110,7 @@ void Ina226::loop () {
         case OpCodeRead: {
             ack();
             uint16_t addr = popWord();
-            uint16_t value = m_i2cRead(m_i2cAddress, addr);
+            uint16_t value = i2cRead(addr);
             m_btSend(&value, 2);
             break;
         }
@@ -100,7 +119,7 @@ void Ina226::loop () {
             uint16_t addr = popWord();
             ack();
             uint16_t value = popWord();
-            m_i2cWrite(m_i2cAddress, addr, value);
+            i2cWrite(addr, value);
 
             if (addr == ConfigReg) {
                 m_configReg = value;
@@ -132,23 +151,22 @@ void Ina226::loop () {
                     uint16_t reg;
                     m_i2cWrite(m_i2cAddress, ConfigReg, m_configReg);
                     while (! conv_ready) {
-                        reg = m_i2cRead(m_i2cAddress, MaskEnableReg);
+                        reg = i2cRead(MaskEnableReg);
                         conv_ready = reg & (1 << 3);
                     }
-                    current_raw = m_i2cRead(m_i2cAddress, CurrentReg);
-                    vbus_raw = m_i2cRead(m_i2cAddress, BusVoltageReg);
+                    current_raw = i2cRead(CurrentReg);
+                    vbus_raw = i2cRead(BusVoltageReg);
 
                 } else {
-                    current_raw = m_i2cRead(m_i2cAddress, CurrentReg);
-                    vbus_raw = m_i2cRead(m_i2cAddress, BusVoltageReg);
+                    current_raw = i2cRead(CurrentReg);
+                    vbus_raw = i2cRead(BusVoltageReg);
                 }
-
 
                 m_sampleBuffer[m_sampleBufferidx][i] = current_raw;
                 m_sampleBuffer[m_sampleBufferidx][i+1] = vbus_raw;
             }
 
-            m_btSend((uint8_t *)m_sampleBuffer[m_sampleBufferidx], pkt_length * sizeof(uint16_t));
+            sendBuffer(m_sampleBuffer[m_sampleBufferidx], pkt_length * sizeof(uint16_t));
             m_sampleBufferidx ^= 1;
         }
     }

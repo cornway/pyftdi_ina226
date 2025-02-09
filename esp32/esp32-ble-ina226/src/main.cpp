@@ -17,8 +17,12 @@ bool deviceConnected = false;
 Ina226 *ina226;
 
 class MyServerCallbacks : public BLEServerCallbacks {
-    void onConnect(BLEServer* pServer) { deviceConnected = true; Serial.println("connected"); }
-    void onDisconnect(BLEServer* pServer) { deviceConnected = false; Serial.println("disconnected"); }
+    void onConnect(BLEServer* pServer) { deviceConnected = true; Serial.println("Connected"); }
+    void onDisconnect(BLEServer* pServer) {
+        deviceConnected = false;
+        Serial.println("Disconnected, start advertising");
+        pServer->startAdvertising();
+    }
 };
 
 class MyCallbacks : public BLECharacteristicCallbacks {
@@ -68,7 +72,7 @@ bool _i2cWrite (uint8_t devAddr, uint16_t index, uint16_t value) {
 
 void setup() {
 
-    ina226 = new Ina226();
+    ina226 = new Ina226(ESP_GATT_MAX_ATTR_LEN);
     ina226->registerCallbacks(_btSend, _i2cRead, _i2cWrite);
 
     Wire.begin();

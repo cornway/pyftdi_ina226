@@ -13,7 +13,7 @@ class RealTimePlotParams:
     title: str = "Title"
 
 class RealTimePlot:
-    def __init__(self, params: list, winsize, interval, generator):
+    def __init__(self, params: list, winsize, interval, generator, terminate_callback):
 
         n = len(params)
 
@@ -23,6 +23,8 @@ class RealTimePlot:
 
         self.params = params
         self.fig, self.axes = plt.subplots(n)
+
+        self.fig.canvas.mpl_connect('close_event', terminate_callback)
 
         self.data = []
         self.timestamps = []

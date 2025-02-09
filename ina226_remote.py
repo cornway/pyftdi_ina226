@@ -5,8 +5,6 @@ from enum import IntEnum
 from ina226_regs import *
 from ina226_if import INA226_If, INA226_ll
 
-ina226I2cDefaultAddress = 0x40
-
 class OpCodes(IntEnum):
     ReadReg = 0xfff0
     WriteReg = 0xfff1
@@ -17,11 +15,12 @@ class INA226_Remote(INA226_If):
     byteorder = 'little'
     MaxPktLen = 2048
 
-    def __init__(self, ina226_ll: INA226_ll):
+    def __init__(self, i2c_address, nr_samples, ina226_ll: INA226_ll):
         self.ll = ina226_ll
 
-        self._seti2cAddress(ina226I2cDefaultAddress)
+        self._seti2cAddress(i2c_address)
         self.MaxPktLen = self._getMaxPktLen()
+        self.nrSamples = self.MaxPktLen if nr_samples > self.MaxPktLen else nr_samples
 
         print(f'max packet length = {self.MaxPktLen}')
 
@@ -89,7 +88,7 @@ class INA226_Remote(INA226_If):
         return raw
 
     def read_packet(self):
-        pkt_length = 128
+        pkt_length = self.nrSamples
 
         if not self.pkt_req_sent:
             wdata = pkt_length.to_bytes(2, byteorder='little')
@@ -116,3 +115,6 @@ class INA226_Remote(INA226_If):
             wdata = pkt_length.to_bytes(2, byteorder='little')
             self.ll.sendBytes(wdata)
             self.pkt_req_sent = True
+
+    def terminate(self):
+        self.ll.terminate()

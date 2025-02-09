@@ -12,7 +12,7 @@ typedef bool (*i2cWriteCallback_t) (uint8_t devAddr, uint16_t index, uint16_t va
 
 class Ina226 {
 public:
-    Ina226();
+    Ina226(size_t maxSamplesPerBatch);
 
     void registerCallbacks(btSendCallback_t btSend,
                             i2cReadCallback_t i2cRead,
@@ -30,6 +30,10 @@ private:
     uint16_t popWord();
     void ack();
 
+    void i2cWrite(uint16_t index, uint16_t value);
+    uint16_t i2cRead(uint16_t index);
+    void sendBuffer(void *buf, size_t size);
+
     RingBuffer<char, INA226_MAX_RX_PKTLEN> m_ringRxBuffer;
 
     btSendCallback_t m_btSend;
@@ -43,4 +47,6 @@ private:
     uint8_t m_modeValue;
 
     uint8_t m_i2cAddress;
+
+    size_t m_maxSamplesPerBatch;
 };
